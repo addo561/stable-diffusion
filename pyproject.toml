@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+    "diffusers>=0.36.0",
     "lightning>=2.6.0",
     "matplotlib>=3.9.4",
     "numpy>=2.0.2",
@@ -12,6 +13,7 @@ dependencies = [
     "torchinfo>=1.8.0",
     "torchvision>=0.17.2",
     "tqdm>=4.67.3",
+    "transformers>=4.57.6",
 ]
 
 [tool.uv]
