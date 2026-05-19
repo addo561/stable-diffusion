@@ -16,6 +16,9 @@ class Clip_VAE(nn.Module):
         Args:
             text (str): specify component type(CLIP / VAE)
             device (cuda/cpu): device
+            tokenizer : CLIPTokenizer, for input_ids or tokens
+            text_encoder : CLIPTextModel, to  encode ids or  tokens to embeddings
+            Vae : AutoencoderKL
         """
         super().__init__()
         self.model_name =  model_name
