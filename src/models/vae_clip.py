@@ -33,7 +33,7 @@ class Clip_VAE(nn.Module):
             
         if  self.model_name == 'Vae_encode' or self.model_name == 'Vae_decode':
             self.latent_scaling_factor =  0.18215
-            self.autoencoder = self.Vae.from_pretrained('CompVis/stable-diffusion-v1-4',subfolder='vae')
+            self.autoencoder = self.Vae.from_pretrained('CompVis/stable-diffusion-v1-4',subfolder='vae').to(device)
             
     def forward(self,input : str | torch.Tensor)-> torch.Tensor:
         if self.model_name=='clip':
@@ -47,9 +47,13 @@ class Clip_VAE(nn.Module):
             with torch.no_grad():
                 text_embeddings =   self.get_embeddings(input_ids_tensor)['last_hidden_state']
             return  text_embeddings
+        input = input.to(self.device)
         if  self.model_name == 'Vae_encode':
-            encoded = self.latent_scaling_factor * self.autoencoder.encode(input).sample()
+            with torch.no_grad():
+                encoded = self.latent_scaling_factor * self.autoencoder.encode(input).sample()
             return encoded
         if  self.model_name == 'Vae_decode':
-            decoded  = self.autoencoder.decode(input/self.latent_scaling_factor).sample()
-            return decoded
+            with torch.no_grad():
+                decoded  = self.autoencoder.decode(input/self.latent_scaling_factor).sample()
+                
+            return (decoded/2 + 0.5).clamp(0,1) # [-1,1] to [0,1]
