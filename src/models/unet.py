@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 ## UNEt
 class  TimeEmbedding(nn.Module):
@@ -92,3 +93,28 @@ class ResnetBlock(nn.Module):
         
 
  
+class CrossAttn(nn.Module):
+    def __init__(self,context_dim,channel_dim):
+        super().__init__()
+        self.context_dim = context_dim
+        self.q = nn.Linear(channel_dim,channel_dim,bias=False)
+        self.k = nn.Linear(context_dim,channel_dim,bias=False)
+        self.v = nn.Linear(context_dim,channel_dim,bias=False)
+        self.out = nn.Linear(channel_dim,channel_dim)
+    def forward(self,x,context_matrix):
+        '''
+        Image sequence(x) : [b,c,h,w]
+         context  matrix : [b,seq,context_dim]
+        '''
+        b,c,h,w = x.size()
+        x = x.permute(0,2,3,1).view(b,h*w,c)
+        q  = self.q(x) #(b,seq_q,c)
+        k = self.k(context_matrix)#(b,seq_k,c) 
+        v = self.v(context_matrix)#(b,seq_v,c)
+        scores = q @ k.transpose(-2,-1)#(b,seq_q,seq_k)
+        scale = q.shape[-1] ** 0.5
+        scaled = scores / scale
+        prob = F.softmax(scaled,dim=-1)
+        result = prob @ v #(b,seq_q,seq_k)
+        return self.out(result) #(b,seq,c)
+   
