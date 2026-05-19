@@ -23,11 +23,8 @@ class  TimeEmbedding(nn.Module):
         #final = time_vector[None,:].T @ f_s[None,:]  # (steps,1) x (1,base_dim/2)
         final = torch.outer(time_vector,f_s)#(steps,base_dim/2)
         embedding = torch.zeros(len(timesteps),self.base_dim) #(steps,base_dim)
-        pos_even = torch.sin(final)
-        embedding[:,0::2] = pos_even
-        pos_odd = torch.cos(final)
-        embedding[:,1::2]  = pos_odd
-        print(embedding.shape)
+        embedding[:,0::2] = torch.sin(final)
+        embedding[:,1::2]  = torch.cos(final)
         context =  self.mlp(embedding)  #(dim or d_model,final dim)
         return context
 
