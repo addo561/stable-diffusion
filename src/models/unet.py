@@ -29,11 +29,66 @@ class  TimeEmbedding(nn.Module):
         return context
 
 
+def Normalize(in_channels, num_groups=32):
+    return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+
 class ResnetBlock(nn.Module):
     """Processes spatial image features and injects time context.
 
-    Args:
-        nn (_type_): _description_
+    Attributes:
+        in_ch : input channel dim
+        out_ch : output channel dim
     """
-    def __init__(self,):
-        super().__init__()    
+    def __init__(self,in_ch,d_t_embed,out_ch,dropout):
+        super().__init__()
+        self.embed_dim = d_t_embed
+        self.in_channels = in_ch
+        self.out_channels = out_ch  
+        self.inps = nn.Sequential(
+                Normalize(in_channels=self.in_channels),
+                nn.SiLU(),
+                nn.Conv2d(
+                        self.in_channels,
+                        self.out_channels,
+                        kernel_size=3,
+                        padding=1,
+                    )
+        )
+        
+        # Project time embeddings
+        self.time_proj = nn.Linear(self.embed_dim,self.out_channels)
+        self.outs = nn.Sequential(
+                Normalize(in_channels=self.out_channels),
+                nn.SiLU(),
+                nn.Dropout(0.1),
+                nn.Conv2d(
+                        self.out_channels,
+                        self.out_channels,
+                        kernel_size=3,
+                        padding=1,
+                    )
+        )
+        
+        if self.in_channels == self.out_channels:
+            self.skip_connection = nn.Identity()
+        else:
+            self.skip_connection = nn.Conv2d(
+                                    self.in_channels,
+                                    self.out_channels, 
+                                    1
+                                    )    
+    def forward(self,x,time_context):
+        """
+            (x)Image feats: (Batch, In_Channels, H, W)
+            Time context: (Batch, 1280)
+        """
+        h = x
+        h =  self.inps(x)
+        # project time context
+        proj  = self.time_proj(time_context)[:,:,None,None] #(b,feats,1,1)
+        h =  h + proj
+        h =  self.outs(h)
+        return self.skip_connection(x) + h
+        
+
+ 
