@@ -117,4 +117,22 @@ class CrossAttn(nn.Module):
         prob = F.softmax(scaled,dim=-1)
         result = prob @ v #(b,seq_q,seq_k)
         return self.out(result) #(b,seq,c)
+
+class UpSample(nn.Module):
+    def __init__(self,channels):
+        super().__init__()
+        self.out =  nn.Upsample(scale_factor=2)
+        self.conv = nn.Conv2d(channels,channels,3,padding=1)
+    def forward(self,x):
+        #x is just an image
+        res  = self.out(x)
+        return self.conv(res)    
    
+class DownSample(nn.Module):
+    def __init__(self,channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels,channels,3,stride=2,padding=1)
+    def forward(self,x):
+        #x is just an image
+        return self.conv(x)    
+    
