@@ -13,7 +13,7 @@ class Clip_VAE(nn.Module):
                  ):
         """Module for clip tokenizer,text_encoder and vae decoder/encoder
 
-        Args:
+        Attributes:
             text (str): specify component type(CLIP / VAE)
             device (cuda/cpu): device
             tokenizer : CLIPTokenizer, for input_ids or tokens
