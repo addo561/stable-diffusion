@@ -25,7 +25,7 @@ class Clip_VAE(nn.Module):
             pass
         if self.model_name == 'Vae_decode':
             pass    
-    def forward(self,input)-> torch.Tensor:
+    def forward(self,input : str | torch.Tensor)-> torch.Tensor:
         if self.model_name=='clip':
             input_ids = self.tokenizer([input],
                                        paddings='max_length',
