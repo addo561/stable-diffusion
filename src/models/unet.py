@@ -101,11 +101,12 @@ class CrossAttn(nn.Module):
         self.k = nn.Linear(context_dim,channel_dim,bias=False)
         self.v = nn.Linear(context_dim,channel_dim,bias=False)
         self.out = nn.Linear(channel_dim,channel_dim)
-    def forward(self,x,context_matrix):
+    def forward(self,x,context_matrix=None):
         '''
         Image sequence(x) : [b,c,h,w]
          context  matrix : [b,seq,context_dim]
         '''
+        context_matrix  = x if None else context_matrix
         b,c,h,w = x.size()
         x = x.permute(0,2,3,1).view(b,h*w,c)
         q  = self.q(x) #(b,seq_q,c)
@@ -118,21 +119,40 @@ class CrossAttn(nn.Module):
         result = prob @ v #(b,seq_q,seq_k)
         return self.out(result) #(b,seq,c)
 
-class UpSample(nn.Module):
-    def __init__(self,channels):
+class Upsample(nn.Module):
+    def __init__(self,channels,with_conv:bool):
         super().__init__()
-        self.out =  nn.Upsample(scale_factor=2)
-        self.conv = nn.Conv2d(channels,channels,3,padding=1)
+        self.with_conv  = with_conv
+        if self.with_conv:
+            self.conv = nn.Conv2d(
+                                channels,
+                                channels,
+                                kernel_size=3,
+                                stride = 1,
+                                ) 
     def forward(self,x):
-        #x is just an image
-        res  = self.out(x)
-        return self.conv(res)    
+        x  = F.interpolate(x,scale_factor=2,mode='nearest')
+        return self.conv(x) if self.with_conv else x   
    
-class DownSample(nn.Module):
-    def __init__(self,channels):
+class Downsample(nn.Module):
+    def __init__(self,channels,with_conv:bool):
         super().__init__()
-        self.conv = nn.Conv2d(channels,channels,3,stride=2,padding=1)
+        self.with_conv = with_conv
+        if self.with_conv:
+            self.conv = nn.Conv2d(
+                                channels,
+                                channels,
+                                kernel_size=3,
+                                stride=2,
+                                padding=1)
     def forward(self,x):
-        #x is just an image
-        return self.conv(x)    
+        if self.with_conv:
+            pad = (1,0,1,0)
+            x = F.pad(x,pad=pad,mode='constant',value=0)
+            x = self.conv(x)
+        else:
+            x = F.avg_pool2d(x,kernel_size=3,stride=2)     
+        return  x  
+     
+     
     
