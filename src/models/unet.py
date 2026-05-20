@@ -45,7 +45,7 @@ class ResnetBlock(nn.Module):
         self.embed_dim = d_t_embed
         self.in_channels = in_ch
         self.out_channels = out_ch  
-        self.inps = nn.Sequential(
+        self.in_layers = nn.Sequential(
                 Normalize(in_channels=self.in_channels),
                 nn.SiLU(),
                 nn.Conv2d(
@@ -57,11 +57,15 @@ class ResnetBlock(nn.Module):
         )
         
         # Project time embeddings
-        self.time_proj = nn.Linear(self.embed_dim,self.out_channels)
-        self.outs = nn.Sequential(
+        self.emb_layers = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(self.embed_dim,self.out_channels)
+            
+            )
+        self.out_layers = nn.Sequential(
                 Normalize(in_channels=self.out_channels),
                 nn.SiLU(),
-                nn.Dropout(0.1),
+                nn.Dropout(dropout),
                 nn.Conv2d(
                         self.out_channels,
                         self.out_channels,
@@ -84,40 +88,14 @@ class ResnetBlock(nn.Module):
             Time context: (Batch, 1280)
         """
         h = x
-        h =  self.inps(x)
+        h =  self.in_layers(x)
         # project time context
-        proj  = self.time_proj(time_context)[:,:,None,None] #(b,feats,1,1)
+        proj  = self.emb_layers(time_context)[:,:,None,None] #(b,feats,1,1)
         h =  h + proj
-        h =  self.outs(h)
+        h =  self.out_layers(h)
         return self.skip_connection(x) + h
         
 
- 
-class CrossAttn(nn.Module):
-    def __init__(self,context_dim,channel_dim):
-        super().__init__()
-        self.context_dim = context_dim
-        self.q = nn.Linear(channel_dim,channel_dim,bias=False)
-        self.k = nn.Linear(context_dim,channel_dim,bias=False)
-        self.v = nn.Linear(context_dim,channel_dim,bias=False)
-        self.out = nn.Linear(channel_dim,channel_dim)
-    def forward(self,x,context_matrix=None):
-        '''
-        Image sequence(x) : [b,c,h,w]
-         context  matrix : [b,seq,context_dim]
-        '''
-        context_matrix  = x if None else context_matrix
-        b,c,h,w = x.size()
-        x = x.permute(0,2,3,1).view(b,h*w,c)
-        q  = self.q(x) #(b,seq_q,c)
-        k = self.k(context_matrix)#(b,seq_k,c) 
-        v = self.v(context_matrix)#(b,seq_v,c)
-        scores = q @ k.transpose(-2,-1)#(b,seq_q,seq_k)
-        scale = q.shape[-1] ** 0.5
-        scaled = scores / scale
-        prob = F.softmax(scaled,dim=-1)
-        result = prob @ v #(b,seq_q,seq_k)
-        return self.out(result) #(b,seq,c)
 
 class Upsample(nn.Module):
     def __init__(self,channels,with_conv:bool):
