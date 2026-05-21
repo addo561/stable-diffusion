@@ -49,7 +49,6 @@ class CrossAttn(nn.Module):
         res = res.view(b,self.heads,pixels,dim_head).permute(0,2,1,3).reshape(b,pixels,-1) #(b,pixels,inner_dim)
         return self.to_out(res) #(b,pixels,query_dim)
         
-    
 class TransformerBlock(nn.Module):
     def __init__(self,channels,n_heads,head_dim,dropout,context_dim=None):
         super().__init__()
@@ -98,7 +97,7 @@ class SpatialTransformer(nn.Module):
                                   padding=0 
         )
         self.transformer_blocks = nn.ModuleList(
-            [TransformerBlock(channels,n_heads,head_dim,dropout,context_dim) for _ in range(depth)]
+            [TransformerBlock(inner_dim,n_heads,head_dim,dropout,context_dim) for _ in range(depth)]
             )
         self.proj_out =  nn.Conv2d(
                                   inner_dim,
@@ -120,6 +119,6 @@ class SpatialTransformer(nn.Module):
         res = rearrange(res,'b c h w -> b (h w) c')#(Batch, Pixels, Channels)
         for block in self.transformer_blocks:
             res = block(res,context_matrix) # (batch,pixels,channels)
-        res = res.view(b,h,w,c).permute(0,3,1,2) 
+        res = rearrange(res, 'b (h w) c -> b c h w', h=h, w=w)
         res = self.proj_out(res) + x # (b,c,h,w)
-        return res                 
+        return res         
