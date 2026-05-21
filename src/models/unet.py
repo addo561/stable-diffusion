@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from attention import SpatialTransformer
 
 ## UNEt
-class  TimeEmbedding(nn.Module):
+class  TimestepEmbedding(nn.Module):
     """Encodes scalar diffusion steps into continuous vectors.
     """
     def  __init__(self,base_dim,f_dim):
@@ -17,30 +18,32 @@ class  TimeEmbedding(nn.Module):
             nn.Linear(self.f_dim,self.f_dim)
         )
     def forward(self,timesteps: torch.Tensor)-> torch.Tensor:
-        time_vector = torch.arange(0,len(timesteps),device=timesteps.device).float()#(len(steps),)
-        dim_vector = torch.arange(0,self.base_dim,2).float()#(base_dim/2,)
+        time_vector = timesteps.flatten().float()#(len(steps),)
+        b =  time_vector.shape[0]
+        dim_vector = torch.arange(0,self.base_dim,2,device=timesteps.device).float()#(base_dim/2,)
         frequency_scales = 10000 ** (dim_vector/self.base_dim)
         f_s =  1/frequency_scales
-        #final = time_vector[None,:].T @ f_s[None,:]  # (steps,1) x (1,base_dim/2)
+        #final = time_vector[:,None] @ f_s[None,:]  # (steps,1) x (1,base_dim/2)
         final = torch.outer(time_vector,f_s)#(steps,base_dim/2)
-        embedding = torch.zeros(len(timesteps),self.base_dim) #(steps,base_dim)
+        embedding = torch.zeros(b,self.base_dim,device=timesteps.device) #(steps,base_dim)
         embedding[:,0::2] = torch.sin(final)
         embedding[:,1::2]  = torch.cos(final)
-        context =  self.mlp(embedding)  #(dim or d_model,final dim)
+        context =  self.mlp(embedding)  #(steps,final dim)
         return context
-
 
 def Normalize(in_channels, num_groups=32):
     return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
-class ResnetBlock(nn.Module):
+class ResBlock(nn.Module): # name have to match compVis class
     """Processes spatial image features and injects time context.
 
     Attributes:
         in_ch : input channel dim
         out_ch : output channel dim
+        d_t_embed : embed_channels
+        dropout
     """
-    def __init__(self,in_ch,d_t_embed,out_ch,dropout):
+    def __init__(self,in_ch,d_t_embed,out_ch,dropout=0.):
         super().__init__()
         self.embed_dim = d_t_embed
         self.in_channels = in_ch
@@ -88,7 +91,7 @@ class ResnetBlock(nn.Module):
             Time context: (Batch, 1280)
         """
         h = x
-        h =  self.in_layers(x)
+        h =  self.in_layers(h)
         # project time context
         proj  = self.emb_layers(time_context)[:,:,None,None] #(b,feats,1,1)
         h =  h + proj
@@ -133,4 +136,36 @@ class Downsample(nn.Module):
         return  x  
      
      
-    
+class UNetConditional2D(nn.Module):
+    def __init__(self,
+                 in_channels=4,
+                 out_channels=4,
+                 model_channels=320):
+        super().__init__()
+        
+        # Time Encoder Track
+        self.time_embed = TimestepEmbedding(base_dim=320, out_dim=1280)
+        
+        #  The Encoder Track 
+        self.input_blocks = nn.ModuleList([
+            
+        ])
+        
+        # bottleneck
+        self.middle_block = nn.Sequential(
+            ResBlock(1280,1280,1280,dropout=0.1),
+            SpatialTransformer(channels=1280, n_heads=8, head_dim=160),
+            ResBlock(1280,1280,1280,dropout=0.1)
+        )
+        
+        #  The Decoder Track
+        self.output_blocks = nn.ModuleList([ ... 12 Sequential Slots ... ])
+        
+        #  The Output 
+        self.out = nn.Sequential(
+            nn.GroupNorm(32, 320),
+            nn.SiLU(),
+            nn.Conv2d(320, out_channels, kernel_size=3, padding=1)
+        )
+    def forward(self,):
+        pass    
