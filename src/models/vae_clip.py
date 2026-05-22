@@ -1,5 +1,3 @@
-from transformers import CLIPTokenizer,CLIPTextModel
-from diffusers import AutoencoderKL
 import torch
 import torch.nn  as nn
   
