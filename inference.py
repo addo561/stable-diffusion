@@ -92,12 +92,13 @@ def  main():
     model.eval()
     timesteps = torch.linspace(T - 1, 0, steps, dtype=int)
     xt = torch.randn(1,4,64,64).to(device) #  only 1 sample, gaussain latent
+    cond  = encode_text(prompt).to(device)
+    cond_neg = encode_text(negative_prompt)
     for t_idx in tqdm.tqdm(timesteps,desc='loading',colour='blue'):
         t  = torch.full((xt.shape[0],),t_idx,device=device).long()
         
         # Pass prompts to get conditioned  and unconditioned  predictions,  but encode them first 
-        cond  = encode_text(prompt).to(device)
-        cond_neg = encode_text(negative_prompt)
+       
         conditioned_pred = model(xt,t,cond)
         unconditioned_pred = model(xt,t,cond_neg)
         
