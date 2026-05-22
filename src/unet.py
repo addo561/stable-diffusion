@@ -174,7 +174,12 @@ class UNetConditional2D(nn.Module):
                 channels = block_out_channels[i]
                 
                 if i in attn_levels:
-                    layers.append(SpatialTransformer(channels, n_heads, head_dim=80, context_dim=cross_attention_dim)) 
+                    # head_dim = channels // n_heads so inner_dim matches channel count at each level
+                    # 320ch → head_dim=40 → inner_dim=320
+                    # 640ch → head_dim=80 → inner_dim=640
+                    # 1280ch → head_dim=160 → inner_dim=1280
+                    head_dim = channels // n_heads
+                    layers.append(SpatialTransformer(channels, n_heads, head_dim=head_dim, context_dim=cross_attention_dim)) 
                     
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_channels.append(channels) # all input block channels  , use later for decoder(skip connections)
@@ -185,7 +190,7 @@ class UNetConditional2D(nn.Module):
          
         self.middle_block = TimestepEmbedSequential(
             ResBlock(channels,block_out_channels[-1]),
-            SpatialTransformer(channels,n_heads=n_heads,head_dim=80,context_dim=cross_attention_dim),
+            SpatialTransformer(channels, n_heads, head_dim=channels//n_heads, context_dim=cross_attention_dim),
             ResBlock(channels,block_out_channels[-1]),
         )   
         # (decoder) 
@@ -196,7 +201,9 @@ class UNetConditional2D(nn.Module):
                 layers = [ResBlock(in_ch=channels + input_block_channels.pop(),d_t_embed=block_out_channels[-1],out_ch=block_out_channels[i])]
                 channels = block_out_channels[i]
                 if i in attn_levels:
-                    layers.append(SpatialTransformer(channels,n_heads,head_dim=80,context_dim=cross_attention_dim))
+                    # head_dim = channels // n_heads so inner_dim matches channel count at each level
+                    head_dim = channels // n_heads
+                    layers.append(SpatialTransformer(channels, n_heads, head_dim=head_dim, context_dim=cross_attention_dim))
                 if i != 0 and j == layers_per_block:
                     layers.append(Upsample(channels))    
                 self.output_blocks.append(TimestepEmbedSequential(*layers))   
@@ -218,7 +225,4 @@ class UNetConditional2D(nn.Module):
         for m in self.output_blocks:
             x = torch.cat([x,input_block.pop()],dim=1) # skip connections in  the  unet for decoder side(u)
             x  = m(x,t_embedding,cond)
-        return  self.out(x)    
-            
-        
-
+        return  self.out(x)
