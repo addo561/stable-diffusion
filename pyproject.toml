@@ -10,6 +10,7 @@ dependencies = [
     "lightning>=2.6.0",
     "matplotlib>=3.9.4",
     "numpy<2",
+    "path>=17.1.1",
     "torch>=2.2.2",
     "torchinfo>=1.8.0",
     "torchvision>=0.17.2",
