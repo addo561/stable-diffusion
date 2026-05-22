@@ -9,8 +9,11 @@
 import tqdm
 import torch
 from diffusers import  DDIMScheduler
+from transformers import CLIPTokenizer,CLIPTextModel
+from diffusers import AutoencoderKL
 import argparse
-from .src.vae_clip import Clip_VAE
+from src.vae_clip import Clip_VAE
+from src.unet import UNetConditional2D
 from config import config
 from transformers import CLIPTokenizer
 import matplotlib.pyplot  as plt
@@ -24,7 +27,8 @@ logging.basicConfig(
     format="{asctime} - {levelname} - {message}",
     style="{",
     datefmt="%Y-%m-%d %H:%M", #edit  format asctime
-    level='INFO'
+    level='INFO',
+    force=True
     )
 
 
@@ -35,33 +39,28 @@ parser.add_argument('-c','--cond', type = str ,)
 parser.add_argument('-c_n','--c_neg',type = str,default = 'blurry image, low quality')
 parser.add_argument('-s','--steps', type =  int)
 parser.add_argument('-g','--guidance', type  = float, default = 7.5, help='Classifier-free guidance scale')
-parser.add_argument('--vae_decoder',type = torch.nn.Module)
-parser.add_argument('--text_model',type = torch.nn.Module)
-parser.add_argument('--unet_model',type = torch.nn.Module)
 args = parser.parse_args()
 
 logging.info('LOADING SCHEDULER')
 model_pretrained = config['compvis']['pretrained_model_name_or_path']
-scheduler = DDIMScheduler.from_pretrained(model_pretrained, subfolder = 'scheduler',device = device)
-alpha_bars =  scheduler.alphas_cumprod # get alpha_bars (scheduler) from diffusers from ddim
+scheduler = DDIMScheduler.from_pretrained(model_pretrained, subfolder = 'scheduler')
+alpha_bars =  scheduler.alphas_cumprod.to(device) # get alpha_bars (scheduler) from diffusers from ddim
 logging.info('SCHEDULER READY')
 
 # Get various modules
 logging.info('LOADING OTHER MODELS')
-UNetConditional2D  = args.unet_model
-vae_decoder = args.vae_decoder
-textModel = args.text_model
 
-# Instantiate model
 model = UNetConditional2D(
-    channels = 320,
-    in_channels = 4,
-    out_channels = 4,
-    block_out_channels = [320,640,1280,1280],
-    layers_per_block = 2,
-    levels = 4,
-    attn_levels = [0,1,2,3]
-).to(device)
+        channels = 320,
+        in_channels = 4,
+        out_channels = 4,
+        block_out_channels = [320,640,1280,1280],
+        layers_per_block = 2,
+        levels = 4,
+        attn_levels = [0,1,2,3]
+)
+model.load_state_dict(torch.load('/content/stable_diffusion/model/model.pth',map_location=device))#  in colab runtime
+model = model.to(device)
 logging.info('UNET  MODEL READY')
 
 # Get  embedding  for  the  text(prompts)
@@ -69,14 +68,15 @@ encode_text = Clip_VAE(
                     model_name = 'clip',
                     device = device,
                     tokenizer = CLIPTokenizer,
-                    text_encoder = textModel
+                    text_encoder = CLIPTextModel
                     )
 
 #  Decoder  vae
 decoder_vae = Clip_VAE(
                     model_name = 'Vae_decode',
                     device = device,
-                    Vae=vae_decoder)
+                    Vae=AutoencoderKL
+                    )
 logging.info('CLIP AND VAE READY')
 
 # Steps,prompt and negative prompt,timesteps
@@ -90,12 +90,13 @@ guidance = args.guidance
 @torch.inference_mode()
 def  main():
     model.eval()
-    xt = torch.randn(1,3,64,64) #  only 1 sample, gaussain latent
-    for t_idx in tqdm.tqdm(reversed(range(0,T,steps)),desc='loading',colour='blue'):
+    timesteps = torch.linspace(T - 1, 0, steps, dtype=int)
+    xt = torch.randn(1,4,64,64).to(device) #  only 1 sample, gaussain latent
+    for t_idx in tqdm.tqdm(timesteps,desc='loading',colour='blue'):
         t  = torch.full((xt.shape[0],),t_idx,device=device).long()
         
         # Pass prompts to get conditioned  and unconditioned  predictions,  but encode them first 
-        cond  = encode_text(prompt)
+        cond  = encode_text(prompt).to(device)
         cond_neg = encode_text(negative_prompt)
         conditioned_pred = model(xt,t,cond)
         unconditioned_pred = model(xt,t,cond_neg)
@@ -103,9 +104,9 @@ def  main():
         # Guide image
         noise_pred = unconditioned_pred + guidance  * (conditioned_pred - unconditioned_pred)
         t_prev  = torch.clamp(t-10,min=0)
-        alpha_bars = alpha_bars[t].reshape(-1,1,1,1)
+        alpha_bars_t = alpha_bars[t].reshape(-1,1,1,1)
         alpha_bars_prev  =  alpha_bars[t_prev].reshape(-1,1,1,1)
-        predict_x_0 =( xt  - (((1  -  alpha_bars)**0.5) * noise_pred)) /  (alpha_bars**0.5)
+        predict_x_0 =( xt  - (((1  -  alpha_bars_t)**0.5) * noise_pred)) /  (alpha_bars_t**0.5)
         predict_x_0 = predict_x_0.clamp(-1,1)
         pointing_xt  =   ((1 - alpha_bars_prev)**0.5) * noise_pred
         xt = (alpha_bars_prev **0.5) * predict_x_0 +  pointing_xt
@@ -117,7 +118,7 @@ def  main():
     decoded = decoded.astype('uint8') 
     path = Path('outputs')
     path.mkdir(exist_ok=True)
-    img_path = path / 'image_generated.png'
+    img_path = path / 'image_generated_1.png'
     plt.imsave(img_path,decoded)
     logging.info(f'Saved image to {img_path}')
     
