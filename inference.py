@@ -113,7 +113,8 @@ def  main():
     # After getting prediction,decode with vae  and save
     decoded = decoder_vae(xt)
     decoded =  decoded.cpu().permute(0,2,3,1).float().numpy()  # range  [0,1]
-    decoded =  (decoded * 255)
+    decoded =  (decoded[0] * 255)
+    decoded = decoded.astype('uint8') 
     path = Path('outputs')
     path.mkdir(exist_ok=True)
     img_path = path / 'image_generated.png'
