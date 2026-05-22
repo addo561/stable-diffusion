@@ -9,10 +9,10 @@
 import tqdm
 import torch
 from diffusers import  DDIMScheduler
-from src.models.unet import UNetConditional2D
+from .src.unet import UNetConditional2D
 import argparse
 from config import config
-from src.models.vae_clip import Clip_VAE
+from .src.vae_clip import Clip_VAE
 from transformers import CLIPTokenizer,CLIPTextModel
 from diffusers import AutoencoderKL
 import matplotlib.pyplot  as plt
