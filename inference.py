@@ -9,15 +9,15 @@
 import tqdm
 import torch
 from diffusers import  DDIMScheduler
-from .src.unet import UNetConditional2D
 import argparse
-from config import config
 from .src.vae_clip import Clip_VAE
-from transformers import CLIPTokenizer,CLIPTextModel
-from diffusers import AutoencoderKL
+from config import config
+from transformers import CLIPTokenizer
 import matplotlib.pyplot  as plt
 from pathlib  import Path 
 import  logging
+device = 'cuda' if torch.cuda.is_available()  else 'cpu'
+
 
 #  logging
 logging.basicConfig(
@@ -26,7 +26,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M", #edit  format asctime
     level='INFO'
     )
-device = 'cuda' if torch.cuda.is_available()  else 'cpu'
+
 
 parser = argparse.ArgumentParser(
     description = 'Generate image'
@@ -35,12 +35,22 @@ parser.add_argument('-c','--cond', type = str ,)
 parser.add_argument('-c_n','--c_neg',type = str,default = 'blurry image, low quality')
 parser.add_argument('-s','--steps', type =  int)
 parser.add_argument('-g','--guidance', type  = float, default = 7.5, help='Classifier-free guidance scale')
+parser.add_argument('--vae_decoder',type = torch.nn.Module)
+parser.add_argument('--text_model',type = torch.nn.Module)
+parser.add_argument('--unet_model',type = torch.nn.Module)
 args = parser.parse_args()
 
 logging.info('LOADING SCHEDULER')
 model_pretrained = config['compvis']['pretrained_model_name_or_path']
 scheduler = DDIMScheduler.from_pretrained(model_pretrained, subfolder = 'scheduler',device = device)
 alpha_bars =  scheduler.alphas_cumprod # get alpha_bars (scheduler) from diffusers from ddim
+logging.info('SCHEDULER READY')
+
+# Get various modules
+logging.info('LOADING OTHER MODELS')
+UNetConditional2D  = args.unet_model
+vae_decoder = args.vae_decoder
+textModel = args.text_model
 
 # Instantiate model
 model = UNetConditional2D(
@@ -59,14 +69,14 @@ encode_text = Clip_VAE(
                     model_name = 'clip',
                     device = device,
                     tokenizer = CLIPTokenizer,
-                    text_encoder = CLIPTextModel
+                    text_encoder = textModel
                     )
 
 #  Decoder  vae
 decoder_vae = Clip_VAE(
                     model_name = 'Vae_decode',
                     device = device,
-                    Vae=AutoencoderKL)
+                    Vae=vae_decoder)
 logging.info('CLIP AND VAE READY')
 
 # Steps,prompt and negative prompt,timesteps
