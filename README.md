@@ -41,3 +41,16 @@ components custom — ensuring quality without compromising learning.
 ### Inference Loop Diagram
 
 <img width="680" height="582" alt="sd_inference_loop" src="https://github.com/user-attachments/assets/06010fd7-035d-467f-a56d-f835ab1801d9" />
+
+### Custom UNet vs. Diffusers UNet – Results Comparison(prompt =  'an astronuat  riding a horse)
+
+| My Custom UNet (weight injection attempt) | Diffusers UNet (final pipeline) |
+|:-----------------------------------------:|:-------------------------------:|
+| <img width="512" height="512" alt="image_generated_final-2" src="https://github.com/user-attachments/assets/706cfb48-bda0-44b5-b8ba-47b1c613ef4a" />|<img width="512" height="512" alt="image_generated_final-10" src="https://github.com/user-attachments/assets/38f4f630-d950-4c8d-a9d8-bd1849e78466" />|
+| *Garbled / incoherent output* | *Coherent, prompt‑following output* |
+
+
+## 🔧 Inference
+
+```bash
+python inference.py -c "your prompt" -s 50 -g 7.5
