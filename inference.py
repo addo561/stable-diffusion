@@ -44,7 +44,6 @@ args = parser.parse_args()
 logging.info('LOADING SCHEDULER')
 model_pretrained = config['compvis']['pretrained_model_name_or_path']
 scheduler = DDIMScheduler.from_pretrained(model_pretrained, subfolder = 'scheduler')
-alpha_bars =  scheduler.alphas_cumprod.to(device) # get alpha_bars (scheduler) from diffusers from ddim
 logging.info('SCHEDULER READY')
 
 #  various modules
@@ -91,34 +90,25 @@ guidance = args.guidance
 @torch.inference_mode()
 def main():
     model.eval()
-    timesteps = torch.linspace(T - 1, 0, steps, dtype=int)
+    #  number of inference steps in scheduler
+    scheduler.set_timesteps(steps, device=device)
+    timesteps = scheduler.timesteps  # automatically descending, [999, 979, ..., 0]
     xt = torch.randn(1, 4, 64, 64).to(device)
     # encode 
-    cond     = encode_text(prompt).to(device)
+    cond = encode_text(prompt).to(device)
     cond_neg = encode_text(negative_prompt).to(device)   
 
-    for i, t_idx in enumerate(tqdm.tqdm(timesteps, desc='loading', colour='blue')):
+    for t_idx in tqdm.tqdm(timesteps, desc='loading', colour='blue'):
         t = torch.full((xt.shape[0],), t_idx, device=device).long()
 
-        # actual previous timestep from schedule
-        t_prev_idx = timesteps[i + 1] if i + 1 < len(timesteps) else torch.tensor(0)
-        t_prev = torch.full((xt.shape[0],), t_prev_idx, device=device).long()
-
-        conditioned_pred   = model(xt, t, cond)
+        conditioned_pred = model(xt, t, cond)
         unconditioned_pred = model(xt, t, cond_neg)
-
+        # apply cfg
         noise_pred = unconditioned_pred + guidance * (conditioned_pred - unconditioned_pred)
+        xt = scheduler.step(noise_pred, t, xt).prev_sample
 
-        alpha_bars_t    = alpha_bars[t].reshape(-1, 1, 1, 1)
-        alpha_bars_prev = alpha_bars[t_prev].reshape(-1, 1, 1, 1)
-
-        predict_x_0 = (xt - ((1 - alpha_bars_t) ** 0.5) * noise_pred) / (alpha_bars_t ** 0.5)
-        predict_x_0 = predict_x_0.clamp(-1, 1)
-        pointing_xt = ((1 - alpha_bars_prev) ** 0.5) * noise_pred
-        xt = (alpha_bars_prev ** 0.5) * predict_x_0 + pointing_xt
-
-    # divide by scale factor before VAE decode
-    decoded = decoder_vae(xt)                  # ← scale factor
+    # get decoded  image
+    decoded = decoder_vae(xt)               
     decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
     decoded = (decoded[0] * 255).astype('uint8')
 
