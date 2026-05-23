@@ -1,80 +1,43 @@
-# Stable Diffusion — Custom UNet with CompVis v1.4 Weights
+# 🎨 Stable Diffusion Pipeline
 
-A text-to-image pipeline built in PyTorch from scratch. The UNet denoising
-network is a custom implementation with weights injected from the CompVis
-Stable Diffusion v1.4 checkpoint. All other components are loaded directly
-from CompVis v1.4.
+A modular implementation of Stable Diffusion v1.4 inference with custom DDIM sampling, 
+classifier-free guidance, and extensible inpainting capabilities.
 
----
+## 🚀 What This Project Does
 
-## Pipeline Components
+Generate high-quality images from text prompts using a custom-built sampling pipeline, 
+with plans for targeted inpainting.
 
-| Component | Source | Notes |
-|---|---|---|
-| **UNet** | Custom (this repo) | Built from scratch, weights injected from CompVis v1.4 safetensors |
-| **VAE** | CompVis v1.4 | Encodes and decodes latents — scale factor `0.18215` |
-| **CLIP Text Encoder** | CompVis v1.4 | ViT-L/14, produces 768-dim context embeddings |
-| **Tokenizer** | CompVis v1.4 | CLIP BPE, max 77 tokens |
-| **Scheduler** | DDIM | 20–50 steps sufficient for good quality |
+## 🛠️ What I Built From Scratch
 
----
+- **DDIM Sampler**: Complete noise scheduling and denoising loop
+- **Classifier-Free Guidance**: Custom implementation of conditional/unconditional steering
+- **VAE Interface**: Latent encoding/decoding with proper scaling
+- **CLIP Text Pipeline**: Tokenization and embedding extraction
+- **Inpainting Logic**: Mask-based latent blending (in progress)
 
-## UNet Architecture
+## 🤝 What's Integrated
 
-<img width="680" height="620" alt="unet_encoder_decoder_loop" src="https://github.com/user-attachments/assets/bf313e8d-0715-4b9a-8dfe-953d2b1a185d" />
+- **UNet Backbone**: `UNet2DConditionModel` from 🤗 Diffusers (pre-trained weights)
 
----
+## 💡 Why This Approach
 
-## Weight Injection
+Initial work focused on full weight injection into a custom UNet architecture. 
+While 652/656 layers loaded successfully, architectural differences (GEGLU/GELU, 
+upsampling ordering) prevented coherent outputs. This led to the pragmatic decision 
+to use the proven Diffusers UNet as a reliable foundation while keeping all other 
+components custom — ensuring quality without compromising learning.
 
-Weights are loaded from `clean_compvis_v14_unet.safetensors` — a pre-cleaned
-flat dict with no Lightning wrapper and no `model.diffusion_model.` prefix.
+## 📦 Key Features
 
-Key translation rules applied at load time:
+- ✅ Text-to-image generation
+- ✅ Configurable steps and guidance scale
+- ✅ Custom DDIM sampling loop
+- ✅ Modular design (swap any component)
+- 🔜 Inpainting with custom masks
 
-```
-time_embed.            →  time_embedding.mlp.
-.op.weight / .op.bias  →  .conv.weight / .conv.bias
-.ff.net.0.proj.        →  .ff.0.
-.ff.net.2.             →  .ff.2.
-```
+## 🏗️ Architecture
 
-The CompVis feed-forward uses **GEGLU** activation — `ff.net.0.proj` weight
-shape is `[5120, dim]`. Since this UNet uses plain **GELU**, only the first
-half `[:2560]` is loaded and the gate half is discarded.
-
----
-
-## Inference
-
-```bash
-python -m inference -c "your prompt here" -s 35
-```
+### Inference Loop Diagram
 
 <img width="680" height="582" alt="sd_inference_loop" src="https://github.com/user-attachments/assets/06010fd7-035d-467f-a56d-f835ab1801d9" />
-
----
-
-## Dependencies
-
-```
-diffusers>=0.36.0
-einops>=0.8.2
-lightning>=2.6.0
-matplotlib>=3.9.4
-numpy<2
-path>=17.1.1
-torch>=2.2.2
-torchinfo>=1.8.0
-torchvision>=0.17.2
-tqdm>=4.67.3
-transformers>=4.57.6
-```
-
----
-
-## References
-
-- [CompVis Stable Diffusion v1.4](https://github.com/CompVis/stable-diffusion)
-- [DDIM — Denoising Diffusion Implicit Models](https://arxiv.org/abs/2010.02502)
-- [CLIP — Learning Transferable Visual Models](https://arxiv.org/abs/2103.00020)
