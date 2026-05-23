@@ -47,7 +47,7 @@ scheduler = DDIMScheduler.from_pretrained(model_pretrained, subfolder = 'schedul
 alpha_bars =  scheduler.alphas_cumprod.to(device) # get alpha_bars (scheduler) from diffusers from ddim
 logging.info('SCHEDULER READY')
 
-# Get various modules
+#  various modules
 logging.info('LOADING OTHER MODELS')
 
 model = UNetConditional2D(
@@ -57,13 +57,14 @@ model = UNetConditional2D(
         block_out_channels = [320,640,1280,1280],
         layers_per_block = 2,
         levels = 4,
-        attn_levels = [0,1,2,3]
+        attn_levels = [0,1,2]
 )
-model.load_state_dict(torch.load('/content/stable_diffusion/model/model.pth',map_location=device))#  in colab runtime
+model.load_state_dict(torch.load('/content/stable_diffusion/model/model_f.pth',map_location=device))#  in colab runtime
+logging.info(model.state_dict()['input_blocks.1.0.in_layers.2.weight'].mean().item())
 model = model.to(device)
 logging.info('UNET  MODEL READY')
 
-# Get  embedding  for  the  text(prompts)
+#   embedding  for  the  text(prompts)
 encode_text = Clip_VAE(
                     model_name = 'clip',
                     device = device,
@@ -88,40 +89,44 @@ guidance = args.guidance
 
 ### -------- WHOLE INFERENCE  LOOP ------------ ### 
 @torch.inference_mode()
-def  main():
+def main():
     model.eval()
     timesteps = torch.linspace(T - 1, 0, steps, dtype=int)
-    xt = torch.randn(1,4,64,64).to(device) #  only 1 sample, gaussain latent
-    cond  = encode_text(prompt).to(device)
-    cond_neg = encode_text(negative_prompt)
-    for t_idx in tqdm.tqdm(timesteps,desc='loading',colour='blue'):
-        t  = torch.full((xt.shape[0],),t_idx,device=device).long()
-        
-        # Pass prompts to get conditioned  and unconditioned  predictions,  but encode them first 
-       
-        conditioned_pred = model(xt,t,cond)
-        unconditioned_pred = model(xt,t,cond_neg)
-        
-        # Guide image
-        noise_pred = unconditioned_pred + guidance  * (conditioned_pred - unconditioned_pred)
-        t_prev  = torch.clamp(t-10,min=0)
-        alpha_bars_t = alpha_bars[t].reshape(-1,1,1,1)
-        alpha_bars_prev  =  alpha_bars[t_prev].reshape(-1,1,1,1)
-        predict_x_0 =( xt  - (((1  -  alpha_bars_t)**0.5) * noise_pred)) /  (alpha_bars_t**0.5)
-        predict_x_0 = predict_x_0.clamp(-1,1)
-        pointing_xt  =   ((1 - alpha_bars_prev)**0.5) * noise_pred
-        xt = (alpha_bars_prev **0.5) * predict_x_0 +  pointing_xt
+    xt = torch.randn(1, 4, 64, 64).to(device)
+    # encode 
+    cond     = encode_text(prompt).to(device)
+    cond_neg = encode_text(negative_prompt).to(device)   
 
-    # After getting prediction,decode with vae  and save
-    decoded = decoder_vae(xt)
-    decoded =  decoded.cpu().permute(0,2,3,1).float().numpy()  # range  [0,1]
-    decoded =  (decoded[0] * 255)
-    decoded = decoded.astype('uint8') 
+    for i, t_idx in enumerate(tqdm.tqdm(timesteps, desc='loading', colour='blue')):
+        t = torch.full((xt.shape[0],), t_idx, device=device).long()
+
+        # actual previous timestep from schedule
+        t_prev_idx = timesteps[i + 1] if i + 1 < len(timesteps) else torch.tensor(0)
+        t_prev = torch.full((xt.shape[0],), t_prev_idx, device=device).long()
+
+        conditioned_pred   = model(xt, t, cond)
+        unconditioned_pred = model(xt, t, cond_neg)
+
+        noise_pred = unconditioned_pred + guidance * (conditioned_pred - unconditioned_pred)
+
+        alpha_bars_t    = alpha_bars[t].reshape(-1, 1, 1, 1)
+        alpha_bars_prev = alpha_bars[t_prev].reshape(-1, 1, 1, 1)
+
+        predict_x_0 = (xt - ((1 - alpha_bars_t) ** 0.5) * noise_pred) / (alpha_bars_t ** 0.5)
+        predict_x_0 = predict_x_0.clamp(-1, 1)
+        pointing_xt = ((1 - alpha_bars_prev) ** 0.5) * noise_pred
+        xt = (alpha_bars_prev ** 0.5) * predict_x_0 + pointing_xt
+
+    # divide by scale factor before VAE decode
+    decoded = decoder_vae(xt)                  # ← scale factor
+    decoded = decoded.cpu().permute(0, 2, 3, 1).float().numpy()
+    decoded = (decoded[0] * 255).astype('uint8')
+
     path = Path('outputs')
     path.mkdir(exist_ok=True)
-    img_path = path / 'image_generated_1.png'
-    plt.imsave(img_path,decoded)
+    img_path = path / 'image_generated_final.png'
+    plt.imsave(img_path, decoded)
     logging.info(f'Saved image to {img_path}')
-    
-if __name__ =='__main__':
+
+if __name__ == '__main__':
     main()
