@@ -216,13 +216,19 @@ class UNetConditional2D(nn.Module):
         
         
     def forward(self, x : torch.Tensor, t_steps : torch.Tensor, cond : torch.Tensor):
-        input_block = []
         t_embedding  = self.time_embedding(t_steps) # (b,embed_dim)
-        for m in  self.input_blocks:
-            x =  m(x, t_embedding,cond) # input  modules and  what  each takes
-            input_block.append(x)
-        x = self.middle_block(x, t_embedding, cond)   
+    
+        #  outputs of all input blocks for skip connections
+        hs = []
+        for m in self.input_blocks:
+            x = m(x, t_embedding, cond)
+            hs.append(x)
+        
+        x = self.middle_block(x, t_embedding, cond)
+        
+        # Decoder: pop skip connections in reverse order
         for m in self.output_blocks:
-            x = torch.cat([x,input_block.pop()],dim=1) # skip connections in  the  unet for decoder side(u)
-            x  = m(x,t_embedding,cond)
-        return  self.out(x)
+            x = torch.cat([x, hs.pop()], dim=1)
+            x = m(x, t_embedding, cond)
+        
+        return self.out(x)
