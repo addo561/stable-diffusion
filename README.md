@@ -26,7 +26,7 @@ Initial work focused on full weight injection into a custom UNet architecture.
 While 684/686  layers loaded successfully, architectural differences (GEGLU/GELU, 
 upsampling ordering) prevented coherent outputs. This led to the pragmatic decision 
 to use the proven Diffusers UNet as a reliable foundation while keeping all other 
-components custom — ensuring quality without compromising learning. (CHECK RUN.IPYNB FOR THAT)
+components custom — ensuring quality without compromising learning. (CHECK stable-diffusion.ipynb) FOR THAT)
 
 ## 📦 Key Features
 
