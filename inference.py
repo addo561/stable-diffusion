@@ -1,5 +1,5 @@
 ##  DDIM(sampling)
-# use diffusers scheduler  for alpha_prod_t  and alpha_prod_t_prev 
+# use diffusers scheduler 
 #   DDIM sampler
 #   1. Look at xt
 #   2. Predict the noise
@@ -13,7 +13,8 @@ from transformers import CLIPTokenizer,CLIPTextModel
 from diffusers import AutoencoderKL
 import argparse
 from src.vae_clip import Clip_VAE
-from src.unet import UNetConditional2D
+from src.unet import UNetConditional2D #mine
+from diffusers import  UNet2DConditionModel #diffusers
 from config import config
 from transformers import CLIPTokenizer
 import matplotlib.pyplot  as plt
@@ -38,6 +39,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-c','--cond', type = str ,)
 parser.add_argument('-c_n','--c_neg',type = str,default = 'blurry image, low quality')
 parser.add_argument('-s','--steps', type =  int)
+parser.add_argument('-u','--unet_type', type =  bool)
 parser.add_argument('-g','--guidance', type  = float, default = 7.5, help='Classifier-free guidance scale')
 args = parser.parse_args()
 
@@ -49,6 +51,8 @@ logging.info('SCHEDULER READY')
 #  various modules
 logging.info('LOADING OTHER MODELS')
 
+
+#THIS GAVE ME BAD RESULTS (INCOHERENT IMAGES)
 model = UNetConditional2D(
         channels = 320,
         in_channels = 4,
@@ -58,10 +62,20 @@ model = UNetConditional2D(
         levels = 4,
         attn_levels = [0,1,2]
 )
-model.load_state_dict(torch.load('/content/stable_diffusion/model/model_f.pth',map_location=device))#  in colab runtime
-logging.info(model.state_dict()['input_blocks.1.0.in_layers.2.weight'].mean().item())
-model = model.to(device)
-logging.info('UNET  MODEL READY')
+if args.unet_type:
+    logging.info(" USING CUSTOM UNET")
+    model.load_state_dict(torch.load('/kaggle/working/stable_diffusion/model/model_f.pth',map_location=device))#  in colab runtime
+    logging.info(model.state_dict()['input_blocks.1.0.in_layers.2.weight'].mean().item())
+    model = model.to(device)
+    logging.info('UNET  MODEL READY')
+else:
+    logging.info('LOADING UNET (official Diffusers)')
+    model = UNet2DConditionModel.from_pretrained(
+        "CompVis/stable-diffusion-v1-4",
+        subfolder="unet"
+    ).to(device)
+    model.eval()
+    logging.info('UNET READY')
 
 #   embedding  for  the  text(prompts)
 encode_text = Clip_VAE(
@@ -92,7 +106,7 @@ def main():
     model.eval()
     #  number of inference steps in scheduler
     scheduler.set_timesteps(steps, device=device)
-    timesteps = scheduler.timesteps  # automatically descending, [999, 979, ..., 0]
+    timesteps = scheduler.timesteps  # automatically descending
     xt = torch.randn(1, 4, 64, 64).to(device)
     # encode 
     cond = encode_text(prompt).to(device)
@@ -100,12 +114,15 @@ def main():
 
     for t_idx in tqdm.tqdm(timesteps, desc='loading', colour='blue'):
         t = torch.full((xt.shape[0],), t_idx, device=device).long()
-
-        conditioned_pred = model(xt, t, cond)
-        unconditioned_pred = model(xt, t, cond_neg)
-        # apply cfg
+        if args.unet_type:
+            conditioned_pred = model(xt, t, cond) #take out(.sample ) or depending on unet  type
+            unconditioned_pred = model(xt, t, cond_neg)  # same here
+        else:
+            conditioned_pred = model(xt, t, cond).sample #take out(.sample ) or depending on unet  type
+            unconditioned_pred = model(xt, t, cond_neg).sample  # same here
+        #  cfg
         noise_pred = unconditioned_pred + guidance * (conditioned_pred - unconditioned_pred)
-        xt = scheduler.step(noise_pred, t, xt).prev_sample
+        xt = scheduler.step(noise_pred, t_idx, xt).prev_sample
 
     # get decoded  image
     decoded = decoder_vae(xt)               
@@ -114,7 +131,7 @@ def main():
 
     path = Path('outputs')
     path.mkdir(exist_ok=True)
-    img_path = path / 'image_generated_final.png'
+    img_path = path / 'image_generated.png'
     plt.imsave(img_path, decoded)
     logging.info(f'Saved image to {img_path}')
 
