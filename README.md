@@ -33,7 +33,6 @@ components custom — ensuring quality without compromising learning. (CHECK sta
 - ✅ Text-to-image generation
 - ✅ Configurable steps and guidance scale
 - ✅ Custom DDIM sampling loop
-- ✅ Modular design (swap any component)
 - 🔜 Inpainting with custom masks
 
 ## 🏗️ Architecture
