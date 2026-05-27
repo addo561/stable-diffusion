@@ -46,7 +46,8 @@ class Clip_VAE(nn.Module):
             return  text_embeddings
         input = input.to(self.device)
         if  self.model_name == 'Vae_encode':
-            encoded = self.latent_scaling_factor * self.autoencoder.encode(input).sample
+            # Extract the first element from the output object, then sample from it
+            encoded = self.latent_scaling_factor * self.autoencoder.encode(input).latent_dist.sample()
             return encoded
         if  self.model_name == 'Vae_decode':
             decoded  = self.autoencoder.decode(input/self.latent_scaling_factor).sample
